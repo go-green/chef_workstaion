@@ -1,0 +1,278 @@
+wget https://packages.chef.io/files/stable/chef-workstation/24.4.1064/ubuntu/20.04/chef-workstation_24.4.1064-1_amd64.deb
+dpkg -i chef-workstation_24.4.1064-1_amd64.deb
+
+On CENTOS
+cd /etc/yum.repos.d/
+sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
+sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+yum update && yum upgrade && yum install wget
+wget https://packages.chef.io/files/stable/chef-workstation/24.4.1064/el/8/chef-workstation-24.4.1064-1.el8.x86_64.rpm
+yum localinstall chef-workstation-24.4.1064-1.el8.x86_64.rpm
+
+
+1. Chef Resources
+==================
+
+Resource is the smallest configurable piece in a system or the fundamental building block.
+A resource describes the desired state of an element of your insgrastructure and the steps needed 
+to bring that item to the desired state.
+
+e.g. files, users, groups, packages, services.
+
+package 'httpd' do
+	action : install
+end
+
+file '/etc/motd' do
+	content 'hello world my file'
+end
+
+** note that every resource has a default action. If an action is not specified like above, the default action is taken
+For example, the default action of file resource is "create"
+
+file '/etc/motd' do
+	content 'hello world my file'
+	action: create
+end
+
+file 'etc/php.ini.default' do	
+	action: delete
+end
+
+
+Both examples below do the same thing (Default action)
+
+package 'ntp' do
+  action :install
+end 
+
+
+package 'ntp'
+
+in the same way, just to create a file 
+
+
+file '/etc/motd' 
+
+is enough
+
+Chef Client
+==================
+
+Chef client is preset in every node being managed by the chef server.
+Its used to get the node into a desired state by follwing a chef recipe. 
+
+:/> chef-client --local-mode hello.rb
+:/> chef-client -z hello.rb  // Here -z = --local-mode
+
+chef client's default mode is to talk to a chef server, if you want to run it locally, you have to provide the --local-mode OR -z options
+
+
+Cookbooks
+=========================
+
+Cookbooks are usuaully stored on chef servers, however, you can have them on nodes as well.
+
+A chef cookbok is the fundamental unit of configuration and policy distribution.
+Each cookbook defines a scenario, such as everything needed to install and configure MySQL and then it contains all 
+of the components that are required to support that scenario.
+
+ - Contain s receipes that specify the resources to use and the order in which they are to be applied
+ - Attribute values
+ - File distributions
+ - Templates
+ - Extension to Chef such as libraries, definitions and custom resources
+ - Version Control
+ 
+ 
+Common components
+=================
+ - README
+ - metadata
+ - receipes
+ - testing directories
+ 
+ Generating a Cookbook from command line
+ 
+ :/> chef generate cookbook workstation // workstation is the name of the cookbook
+ 
+Veresion Controlling Cookbooks
+==============================
+
+Usually, we track changes of a cookbook in a sigle repository. In other words, no multiple cookbooks are tracked inside one repository.
+
+
+Its also important that we update the metadata.rb file where we have the version number. Everytime you make a change, Update the version and then
+commit your code to git.
+
+Deploy Apache Webserver
+=============================
+
+Crate a new cookbook called apache >> chef generate cookbook cookbooks/apache
+Add server.rb file to receipe folder OR there is a command to do this as well as below
+
+chef generate receipe cookbooks/apache/ server
+
+package 'httpd' do
+	action : install
+end
+
+file '/var/www/html/index.html' do
+	content '<h1>Hellow World</h1>'
+end
+
+service 'httpd' do
+	action [:enable, :start]
+end
+
+And finally, in order to test the server, just type :/> curl localhost
+
+
+Chef client RunList  --runlist or -r
+=======================================
+
+ -client -z --runlist "<cookbook>::<receipe>"
+
+chef-client -z --runlist "apache::server"  OR chef-client -z -r "apache::server" OR chef-client -zr "apache::server"
+
+** if you want to run multiple receipes from various cookbooks, use below syntax
+
+
+chef-client -z --runlist "receipe[<cookbook1>::<receipe1>],receipe[<cookbook2>::<receipe2>]"
+
+chef-client -z -r "receipe[apache::server],receipe[workstaion::setup]" // ** do not leave a space between , s
+
+The include_recipe method.
+============================
+
+Every cookbook has a "default.rb" file in the receipte folder.
+This allows us to spacify the default recipe for that cookbook. 
+
+open default.rb and add below line
+
+include_recipe 'setup.rb'  >> Here setup.rb is another receipe available inside the recipe folder
+
+With above being set, you could just run a command like below
+
+chef-client -zr "receipe[<cookbook>]"  >> Here you do not have to specify the recipe name as its been included as the default for this cookbook
+
+chef-client -zr "receipe[workstation]"
+
+
+** hostname >> prints hostname on linux
+	hostname - I >> prints the IP address
+
+
+
+Ohai
+============
+
+Its a System information discovery tool. If the chef client is installed on the system, typing ohai on the 
+command prompt will print all the system information on the command line.
+
+ohai
+ohai memory
+ohai ipaddress
+ohai hostname
+
+Everytime the chef-client command get executed, the ohai tool is invoked and add the content to node directory
+
+here is an exmpale how to display "MOTD" >> Message of the day using chef and ohai
+
+
+file '/etc/motd' do  // Yes , the motd file does not have an extension
+	content "This server is the propert of Rasika
+	HOSTNAME #{node['hostname']}
+	IPADDRESS #{node['ipaddress']}
+	CPU: #{node['cpu']['0']['mhz']}
+	MEMORY: #{node['memory']['total']}"
+	owner 'root'
+	group 'root'
+	action :create
+endworkstaion
+
+or with the apache web server example code can be refactored as below
+
+
+file '/var/www/html/index.html' do
+	content "
+	<h1>Hellow World</h1>
+	HOSTNAME #{node['hostname']}
+	IPADDRESS #{node['ipaddress']}
+	CPU: #{node['cpu']['0']['mhz']}
+	MEMORY: #{node['memory']['total']}
+	"
+end
+
+
+
+The Template Resources & embeded Ruby (ERB) files
+=================================================
+
+chef generate template <path/to/cookbook> name
+
+chef generate template cookbooks/workstaion/ motd >> This command will generate motd.erb file 
+inside the template d
+
+In ruby templates, the ruby code is wrapped as <%= BLA BLA %>
+
+Lets take a look at the motd example again. 
+
+file '/etc/motd' do  // Yes , the motd file does not have an extension
+	content "This server is the property of Rasika
+	HOSTNAME #{node['hostname']}
+	IPADDRESS #{node['ipaddress']}
+	CPU: #{node['cpu']['0']['mhz']}
+	MEMORY: #{node['memory']['total']}"
+	owner 'root'
+	group 'root'
+	action :create
+end
+
+we can save the below string interpolation content as below with ERB syntax
+
+inside template/motd.erb file, add the below content
+
+This server is the property of Rasika
+HOSTNAME  <%= node['hostname'] %>
+IPADDRESS <%= node['ipaddress'] %>
+CPU: <%= node['cpu']['0']['mhz'] %>
+MEMORY <%= node['memory']['total'] %>
+
+
+And now, the above ruby template can be added to receipe as below
+
+** NOTE, this erb file can be in any format such as php.ini.erb or myjson.json.erb or index.html.erb etc.....
+** Also, when you declare a template resource, you dont have to specify the path, chef will look inside the template folder where we 
+have out template files.
+
+template '/etc/motd' do
+	source 'motd.erb' 
+	action :create
+end
+
+Passing variables to ERB templates
+===================================
+
+template '/etc/motd' do
+	source 'motd.erb' 
+	varibles (
+		:name => 'Rasika Ranawaka'
+	)
+	action :create
+end
+
+And in the *.erb file, 
+
+NAME: <%= @name %>
+
+Chef Configurations
+============================
+
+
+
+ 
+ 
+ 
+ 
+ 
